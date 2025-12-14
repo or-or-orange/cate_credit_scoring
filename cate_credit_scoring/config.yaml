@@ -1,0 +1,38 @@
+# 数据配置
+data:
+  path: 'data/data.csv'
+  missing_threshold: 0.5
+  categorical_threshold: 20
+  test_size: 0.2
+  random_state: 42
+
+# 树模型配置
+tree:
+  n_estimators: 32
+  max_depth: 3
+  random_state: 29
+
+# 模型配置
+model:
+  embedding_dim: 64
+  attention_hidden_dim: 32
+
+# 训练配置
+training:
+  batch_size: 128
+  learning_rate: 0.001
+  lambda_reg: 0.001
+  n_epochs: 2
+  temperature: 0.07
+  device: 'cpu'  # 'cuda' or 'cpu'
+
+# 交叉验证配置
+cv:
+  n_folds: 5
+  shuffle: true
+  random_state: 42
+
+# 性能优化
+optimization:
+  gradient_clip: 1.0
+  early_stopping_patience: 5  # 5轮不提升就停止
