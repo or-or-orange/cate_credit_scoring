@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from typing import Tuple, List
 
 
@@ -15,6 +16,23 @@ class DataPreprocessor:
         self.categorical_features = []
         self.numerical_features = []
     
+    def _handle_extreme_values(self, X: pd.DataFrame) -> pd.DataFrame:
+        """处理无穷大和极端值"""
+        # 替换无穷大值
+        X = X.replace([np.inf, -np.inf], np.nan)
+        
+        # 对数值特征进行截断（使用99.9%分位数）
+        for col in self.numerical_features:
+            if col in X.columns:
+                # 计算分位数
+                upper_bound = X[col].quantile(0.999)
+                lower_bound = X[col].quantile(0.001)
+                
+                # 截断极端值
+                X[col] = X[col].clip(lower=lower_bound, upper=upper_bound)
+        
+        return X
+
     def fit_transform(self, X: pd.DataFrame, y: pd.Series) -> Tuple[np.ndarray, np.ndarray]:
         """
         拟合并转换训练数据
@@ -33,8 +51,10 @@ class DataPreprocessor:
         
         # 2. 移除高缺失率特征
         X = self._remove_high_missing_features(X)
+        # 3. 处理极端值（新增步骤）
+        X = self._handle_extreme_values(X)
         
-        # 3. 移除含缺失值的样本
+        # 4. 移除含缺失值的样本（原步骤）
         X, y = self._remove_missing_samples(X, y)
         
         # 4. 识别特征类型
@@ -42,7 +62,10 @@ class DataPreprocessor:
         
         # 5. 编码分类特征
         X = self._encode_categorical_features(X, fit=True)
-        
+            # 标准化数值特征
+        if self.numerical_features:
+            self.scaler = StandardScaler()
+            X[self.numerical_features] = self.scaler.fit_transform(X[self.numerical_features])
         # 6. 保存特征名
         self.feature_names = X.columns.tolist()
         
