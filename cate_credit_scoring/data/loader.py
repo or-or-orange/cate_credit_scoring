@@ -22,12 +22,11 @@ class DataLoader:
         
         # 根据文件扩展名选择加载方式
         if self.data_path.suffix == '.csv':
-            data = pd.read_csv(self.data_path)
+            data = pd.read_csv(self.data_path, encoding="latin-1")
         elif self.data_path.suffix in ['.xlsx', '.xls']:
             data = pd.read_excel(self.data_path)
         else:
             raise ValueError(f"Unsupported file format: {self.data_path.suffix}")
-        
         print(f"Loaded data with shape: {data.shape}")
         return data
     
