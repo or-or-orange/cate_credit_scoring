@@ -6,13 +6,15 @@ import torch.nn.functional as F
 class SupervisedContrastiveLoss(nn.Module):
     """监督对比损失"""
     
-    def __init__(self, temperature: float = 0.07):
+    def __init__(self, temp_pos: float = 5.0, temp_neg: float = 10.0):
         """
         Args:
             temperature: 温度参数
         """
         super().__init__()
-        self.temperature = temperature
+        self.temp_pos = temp_pos  # 正样本温度
+        self.temp_neg = temp_neg
+        # self.temperature = temperature
     
     def forward(self, hidden_vectors: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """
@@ -30,41 +32,39 @@ class SupervisedContrastiveLoss(nn.Module):
         
         # 计算相似度矩阵
         similarity_matrix = torch.matmul(hidden_vectors, hidden_vectors.T)
-        # shape: (2*batch_size, 2*batch_size)
-        
         # 创建标签掩码
         labels = labels.contiguous().view(-1, 1)
         mask_positive = torch.eq(labels, labels.T).float()
         mask_negative = 1 - mask_positive
-        
         # 移除自身
         mask_positive.fill_diagonal_(0)
-        
         # 计算对比损失
         batch_size = hidden_vectors.shape[0]
         loss = 0.0
         count = 0
         
         for i in range(batch_size):
-            # 正样本索引
             positive_indices = mask_positive[i].nonzero(as_tuple=True)[0]
             
             if len(positive_indices) == 0:
                 continue
             
-            # 负样本索引
             negative_indices = mask_negative[i].nonzero(as_tuple=True)[0]
+
+            if len(negative_indices) > 64:  # 从128进一步减少到64
+                negative_indices = negative_indices[torch.randperm(len(negative_indices))[:64]]
+            pos_sim = similarity_matrix[i, positive_indices] / self.temp_pos
+
+            pos_exp = torch.exp(pos_sim)  # (n_pos,)
             
-            # 计算分子：正样本相似度
-            pos_sim = similarity_matrix[i, positive_indices] / self.temperature
-            pos_exp = torch.exp(pos_sim)
+            # 负样本相似度（每个负样本单独计算）
+            neg_sim = similarity_matrix[i, negative_indices] / self.temp_neg
+            neg_exp = torch.exp(neg_sim).unsqueeze(0)  # (1, n_neg)
+
+            sample_loss = -torch.log(
+                pos_exp.unsqueeze(1) / (pos_exp.unsqueeze(1) + neg_exp)  # (n_pos, n_neg)
+            ).mean()  # 平均所有正负对
             
-            # 计算分母：所有负样本相似度
-            neg_sim = similarity_matrix[i, negative_indices] / self.temperature
-            neg_exp = torch.exp(neg_sim).sum()
-            
-            # 对每个正样本计算损失
-            sample_loss = -torch.log(pos_exp / (pos_exp + neg_exp)).mean()
             loss += sample_loss
             count += 1
         
@@ -77,7 +77,7 @@ class SupervisedContrastiveLoss(nn.Module):
 class CombinedLoss(nn.Module):
     """组合损失：分类损失 + 对比损失 + 正则化"""
     
-    def __init__(self, lambda_reg: float = 0.001, temperature: float = 0.07):
+    def __init__(self, lambda_reg: float = 0.001, temp_pos: float = 5.0, temp_neg: float = 10.0):
         """
         Args:
             lambda_reg: L2正则化系数
@@ -86,7 +86,7 @@ class CombinedLoss(nn.Module):
         super().__init__()
         self.lambda_reg = lambda_reg
         self.bce_loss = nn.BCELoss()
-        self.contrastive_loss = SupervisedContrastiveLoss(temperature=temperature)
+        self.contrastive_loss = SupervisedContrastiveLoss(temp_pos=temp_pos, temp_neg=temp_neg)
     
     def forward(self, predictions: torch.Tensor, labels: torch.Tensor,
                 hidden_vectors: torch.Tensor, model_parameters) -> tuple:
