@@ -18,17 +18,6 @@ class CATETrainer:
         """
         self.model = model
         self.config = config
-        
-        # # 设置设备
-        # if self.device.type == 'cpu':
-        #     # 启用MKL加速
-        #     torch.set_num_threads(4)  # 根据CPU核心数调整
-        #     print(f"CPU threads: {torch.get_num_threads()}")
-        
-        # # GPU优化
-        # if self.device.type == 'cuda':
-        #     print(f"GPU: {torch.cuda.get_device_name(0)}")
-        #     print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
         self.device = torch.device(
             config.training.device if torch.cuda.is_available() else 'cpu'
         )
@@ -39,11 +28,17 @@ class CATETrainer:
             self.model.parameters(),
             lr=config.training.learning_rate
         )
-        
+
+        self.scheduler = torch.optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=5,  # 每5个epoch调整一次
+            gamma=0.5     # 学习率乘以0.5
+        )
         # 损失函数
         self.loss_fn = CombinedLoss(
             lambda_reg=config.training.lambda_reg,
-            temperature=config.training.temperature
+            temp_pos=config.training.temp_pos,
+            temp_neg=config.training.temp_neg
         )
         
         # 训练历史
@@ -188,6 +183,9 @@ class CATETrainer:
             # 验证
             val_metrics = self.evaluate(val_loader)
             
+            # 学习率调度器更新（每个epoch结束后）
+            self.scheduler.step()
+            print(f"Current learning rate: {self.optimizer.param_groups[0]['lr']:.6f}")
             # 保存历史
             self.history['train_loss'].append(train_losses['total_loss'])
             self.history['train_cls_loss'].append(train_losses['cls_loss'])
