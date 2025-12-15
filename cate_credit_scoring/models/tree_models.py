@@ -73,7 +73,9 @@ class TreeFeatureExtractor:
         """
         # 获取每棵树的叶节点索引
         leaf_indices = self.model.apply(X)  # shape: (n_samples, n_estimators)
-        
+        leaf_indices = np.squeeze(leaf_indices)
+        leaf_indices = leaf_indices.astype(np.int64)
+        # print(leaf_indices.shape)
         # 转换为multi-hot向量
         cross_features = self._to_multihot(leaf_indices)
         
@@ -181,25 +183,44 @@ class TreeFeatureExtractor:
         
         return node_samples
     
-    def _to_multihot(self, leaf_indices: np.ndarray) -> np.ndarray:
-        """
-        将叶节点索引转换为multi-hot向量
+    # def _to_multihot(self, leaf_indices: np.ndarray) -> np.ndarray:
+    #     """
+    #     将叶节点索引转换为multi-hot向量
         
-        Args:
-            leaf_indices: (n_samples, n_estimators)
+    #     Args:
+    #         leaf_indices: (n_samples, n_estimators)
         
-        Returns:
-            multihot: (n_samples, n_leaves)
-        """
+    #     Returns:
+    #         multihot: (n_samples, n_leaves)
+    #     """
+
+    #     n_samples, n_trees = leaf_indices.shape
+    #     multihot = np.zeros((n_samples, self.n_leaves), dtype=np.float32)
+        
+    #     offset = 0
+    #     for tree_idx in range(n_trees):
+    #         for sample_idx in range(n_samples):
+    #             leaf_id = leaf_indices[sample_idx, tree_idx]
+    #             multihot[sample_idx, offset + leaf_id] = 1.0
+            
+    #         offset += self.leaf_counts[tree_idx]
+        
+    #     return multihot
+    def _to_multihot(self, leaf_indices):
         n_samples, n_trees = leaf_indices.shape
-        multihot = np.zeros((n_samples, self.n_leaves), dtype=np.float32)
+        total_leaves = sum(self.leaf_counts)
+        multihot = np.zeros((n_samples, total_leaves), dtype=np.float32)
         
         offset = 0
         for tree_idx in range(n_trees):
-            for sample_idx in range(n_samples):
-                leaf_id = leaf_indices[sample_idx, tree_idx]
-                multihot[sample_idx, offset + leaf_id] = 1.0
+            n_leaves = self.leaf_counts[tree_idx]
+            tree_leaves = leaf_indices[:, tree_idx]
             
-            offset += self.leaf_counts[tree_idx]
-        
+            # 关键修复：将leaf_id截断到[0, n_leaves-1]范围内
+            tree_leaves = np.clip(tree_leaves, 0, n_leaves - 1)
+            
+            for sample_idx in range(n_samples):
+                leaf_id = tree_leaves[sample_idx]
+                multihot[sample_idx, offset + leaf_id] = 1.0
+            offset += n_leaves
         return multihot
